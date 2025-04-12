@@ -1,0 +1,13 @@
+*test*.py
+.env
+__pycache__/
+*.pyc
+*.pyo
+/.history
+*.pdf
+*.docx
+*.db
+chroma_db
+test
+*study*.py
+.DS_Store

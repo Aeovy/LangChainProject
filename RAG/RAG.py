@@ -4,9 +4,9 @@ import requests
 import numpy as np
 from dotenv import load_dotenv
 import os
+import tqdm
 load_dotenv()
 
-# 自定义嵌入类，基于成功的curl命令构建
 class LMStudioEmbeddings( ):
     def __init__(self,model_type:str="lmstudio"):
         
@@ -51,7 +51,7 @@ class LMStudioEmbeddings( ):
 # 使用自定义嵌入类
 embed_model = LMStudioEmbeddings(model_type="lmstudio")
 
-from langchain_community.document_loaders import PyMuPDFLoader,Docx2txtLoader,ToMarkdownLoader
+from langchain_community.document_loaders import PyMuPDFLoader,UnstructuredWordDocumentLoader,UnstructuredMarkdownLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 class Vectordb:
@@ -94,14 +94,13 @@ class Vectordb:
         elif file_path.endswith(".txt"):
             pass
         elif file_path.endswith(".docx"):
-            return Docx2txtLoader(file_path).load()
+            return UnstructuredWordDocumentLoader(file_path).load()
         elif file_path.endswith(".pptx"):
             pass
         elif file_path.endswith(".csv"):
             pass
         elif file_path.endswith(".md"):
-            #return UnstructuredMarkdownLoader(file_path).load()
-            pass
+            return UnstructuredMarkdownLoader(file_path).load()
         else:
             raise TypeError("不支持的文件格式")
     
@@ -152,7 +151,7 @@ class Vectordb:
         processed_count = 0
         skipped_count = 0
         for root, _, files in os.walk(directory_path):
-            for file in files:
+            for file in tqdm.tqdm(files):
                 file_path= os.path.join(root, file)
                 status=self.add_file(file_path)
                 if status == "success":

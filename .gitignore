@@ -11,3 +11,4 @@ chroma_db
 test
 *study*.py
 .DS_Store
+*.code-workspace

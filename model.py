@@ -1,5 +1,6 @@
 import os
 from langchain_openai import ChatOpenAI
+from langchain_qwq import ChatQwQ
 from langchain_core.messages import ToolMessage,HumanMessage,AIMessage,SystemMessage
 from langchain_tools import tools,tools_dict
 from dotenv import load_dotenv
@@ -7,11 +8,17 @@ from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_community.chat_message_histories import SQLChatMessageHistory
 from sqlalchemy.ext.asyncio import create_async_engine
 class LLM_Model():
-    def __init__(self, model_type: str="ollama",temperature: float=0.6,tools: list=None,tools_dict: dict=None,maxtoken=2048):
-        load_dotenv()
-        self.__api_key = os.getenv(f"{model_type.upper()}_API_KEY")
-        self.model_name = os.getenv(f"{model_type.upper()}_MODEL_NAME")
-        self.base_url = os.getenv(f"{model_type.upper()}_BASE_URL")
+    def __init__(self,model_name:str="",api_key:str="",base_url="",temperature: float=0.6,tools: list=None,tools_dict: dict=None,maxtoken=2048):
+        if model_name=="" or api_key=="":
+            error=""
+            if model_name=="":
+                error+="model_name "
+            if api_key=="":
+                error+="api_key "
+            raise ValueError(f"{error}不能为空")
+        self.__api_key = api_key
+        self.model_name = model_name
+        self.base_url = base_url
         self.LLM=ChatOpenAI(
             model_name=self.model_name,
             api_key=self.__api_key,
@@ -21,7 +28,7 @@ class LLM_Model():
             streaming=True,
         )
         
-        self.bindtools(tools, tools_dict)
+        self.LLM=self.bindtools(tools, tools_dict)
         
          ####加入对话记忆####
          
@@ -49,10 +56,15 @@ class LLM_Model():
         if tools is not None and tools_dict is not None:
             self.tools=tools
             self.tools_dict=tools_dict
-            self.LLM = self.LLM.bind_tools(tools)
-    
+            LLM = self.LLM.bind_tools(tools)
+            return LLM
+        else:
+            pass
     
     def chat_sync(self, qurey:str=None,Conversion_ID:str=None):
+        """
+        返回未经处理过的chunk
+        """
         self.LLM_sync=RunnableWithMessageHistory(
             self.LLM,
             self.load_memory,
@@ -71,9 +83,9 @@ class LLM_Model():
             else:
                 chunks=chunks+chunk
             # 正常传输内容时，直接输出LLM的content###############
-            if chunk.content!="":
-                print(chunk.content,end="",flush=True)
-                #pass
+            yield chunk
+            # if chunk.content!="":
+            #     print(chunk.content,end="",flush=True)
             ###################################################
         #print("chunks",chunks)
         if chunks.response_metadata.get("finish_reason","")!="":
@@ -89,10 +101,24 @@ class LLM_Model():
                 function_call_result=self.function_call(chunks)
                 for function_msg in function_call_result:
                     chat_history.add_message(function_msg)
-                return self.chat_sync(None,Conversion_ID)
+                yield from self.chat_sync(None,Conversion_ID)
             else:
                 #print("debug_status:",chunks)
                 pass
+    def openai_chat(self,qurey:str=None,Conversion_ID:str=None):
+        """
+        返回经过处理过的chunk
+        """
+        for response in self.chat_sync(qurey=qurey,Conversion_ID=Conversion_ID):
+            if response.content!="":
+                yield response.content
+    def openai_chat_print(self,qurey:str,Conversion_ID:str=None):
+        """
+        直接打印对话内容
+        """
+        for chunk in self.openai_chat(qurey=qurey,Conversion_ID=Conversion_ID):
+            if chunk.content!="":
+                print(chunk.content,end="",flush=True)
     def function_call(self,aimsg):
         result=[]
         for tool_calls in aimsg.tool_calls:
@@ -106,7 +132,64 @@ class LLM_Model():
                 except Exception as e:
                     result.append(ToolMessage(e))
         return result
-
+class LLM_QWQ(LLM_Model):
+    def __init__(self, model_name:str="",api_key:str="",base_url="",temperature: float=0.6,tools: list=None,tools_dict: dict=None,maxtoken=2048):
+        if model_name=="" or api_key=="":
+            error=""
+            if model_name=="":
+                error+="model_name "
+            if api_key=="":
+                error+="api_key "
+            raise ValueError(f"{error}不能为空")
+        self.__api_key = api_key
+        self.model_name = model_name
+        self.base_url = base_url
+        self.LLM=ChatQwQ(
+            model=self.model_name,
+            api_key=self.__api_key,
+            api_base=self.base_url,
+            temperature=temperature,
+            max_tokens=maxtoken,
+            streaming=True,
+        )
+        self.LLM=self.bindtools(tools, tools_dict)
+    def qwq_chat(self,qurey:str=None,Conversion_ID:str=None):
+        """
+        返回经过处理过的chunk
+        """
+        isReasoning=False
+        StartThink=False
+        EndThink=False
+        isContent=False
+        for chunk in super().chat_sync(qurey=qurey,Conversion_ID=Conversion_ID):
+            isContent=chunk.content!=""
+            isReasoning=chunk.additional_kwargs.get("reasoning_content","")!=""
+            if isReasoning and chunk.additional_kwargs.get("reasoning_content","")!="<think>":
+                if StartThink==False:
+                    StartThink=True
+                    yield "<think>\n"+chunk.additional_kwargs["reasoning_content"]
+                else:
+                    yield chunk.additional_kwargs["reasoning_content"]
+            if isContent: 
+                if EndThink==False and chunk.additional_kwargs.get("reasoning_content","")!="<think>":
+                    EndThink=True
+                    yield "\n</think>\n"+chunk.content
+                else:
+                    yield chunk.content
+            # if chunk.content=="" and chunk.additional_kwargs.get("reasoning_content", "")=="":
+            #     yield "<think>"
+            # elif chunk.content=="" and chunk.additional_kwargs.get("reasoning_content", "")!="":
+            #     yield chunk.additional_kwargs["reasoning_content"]
+            # else:
+            #     yield chunk.content
+    def qwq_chat_print(self,qurey:str,Conversion_ID:str=None):
+        """
+        直接打印对话内容
+        """
+        for response_str in self.qwq_chat(qurey=qurey,Conversion_ID=Conversion_ID):
+            print(response_str,end="",flush=True)
+            
+        
 #import asyncio
 ##待开发
 # class LLM_Model_async(LLM_Model):

@@ -164,15 +164,23 @@ class LLM_QWQ(LLM_Model):
         for chunk in super().chat_sync(qurey=qurey,Conversion_ID=Conversion_ID):
             isContent=chunk.content!=""
             isReasoning=chunk.additional_kwargs.get("reasoning_content","")!=""
-            if isReasoning and chunk.additional_kwargs.get("reasoning_content","")!="<think>":
+            if isReasoning:
                 if StartThink==False:
                     StartThink=True
-                    yield "<think>\n"+chunk.additional_kwargs["reasoning_content"]
+                    #有时API不返回思维链标签
+                    if chunk.additional_kwargs.get("reasoning_content","")!="<think>":
+                        yield "<think>\n"+chunk.additional_kwargs["reasoning_content"]
+                    else:
+                        yield chunk.additional_kwargs["reasoning_content"]
                 else:
+                    if chunk.additional_kwargs["reasoning_content"]=="</think>":
+                        EndThink=True
+                        StartThink=False
                     yield chunk.additional_kwargs["reasoning_content"]
             if isContent: 
-                if EndThink==False and chunk.additional_kwargs.get("reasoning_content","")!="<think>":
+                if EndThink==False:
                     EndThink=True
+                    StartThink=False
                     yield "\n</think>\n"+chunk.content
                 else:
                     yield chunk.content

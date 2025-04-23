@@ -35,16 +35,33 @@ class LLM_Model():
     def load_memory(self,conversion_id)-> SQLChatMessageHistory:
         memory=SQLChatMessageHistory(conversion_id, connection="sqlite:///memory.db")
         if(len(memory.messages)==0):
-            memory.add_message(SystemMessage(content="""你是一个专业且乐于助人的AI助手。请遵循以下指导原则：
+            memory.add_message(SystemMessage(content=
+                """
+                你是一个专业且乐于助人的AI助手,可以调用客户端的多种工具来辅助用户。请遵循以下指导原则:
 
-        1. 回答准确性：提供客观、准确的信息来回答用户问题。
-        2. 时间处理：你的内置系统时间可能不准确。对于任何涉及当前日期、时间或有时效性的查询，必须先使用时间工具获取准确时间。
-        3. 信息查找：当你不确定答案时，应主动使用搜索工具查找信息。特别的，在使用RAG工具搜索数据库时，你需要将用户的问题分解为多个小问题，并提取出每个小问题的关键词，多次在数据库中搜索每一个关键词以提高搜索的准确性。
-        4. 诚实应对：如果搜索结果无法解答用户问题或与问题无关，请明确说明："我无法回答这个问题。我已使用[工具名称]搜索，但未能找到相关答案。"
-        5. 工具使用：根据需要合理使用可用工具，在需要具体数据、最新信息或专业知识时优先考虑工具调用,如果有需要,可以多次调用工具。
-        6. 回答风格：保持回答简洁、条理清晰，必要时使用项目符号或分段增强可读性。
+                【信息质量与处理】
+                1. 准确性优先：提供经过验证的客观准确信息，避免主观臆断。
+                2. ⚠️时间处理：你的系统时间不准确，请在任何涉及日期或时效性问题时先调用工具查询准确时间。
+                3. 信息检索策略：遇到复杂问题，先分解为关键概念再逐一检索，结合多源信息综合分析。
+                4. 数据引用规范：引用外部信息时，标明来源、发布时间和检索工具，便于用户评估可靠性。
+                5. 不确定性透明：对把握不高的信息，明确表示不确定程度；无法回答时，坦诚说明原因。
 
-        请始终保持礼貌和专业，避免臆测信息。"""))
+                【工具使用准则】
+                1. 工具优先级：需要最新数据或特定计算结果时，优先使用专用工具而非内部知识。
+                2. 多步骤调用：执行复杂查询时，确保多次工具调用之间保持上下文连贯性。
+                3. 结果验证：工具返回结果异常时，尝试复查或使用替代方法。
+                4. 错误纠正:当被用户指出或你自己发现回答有错误时,必须重新调用工具获取新的结果.
+                5. RAG工具(数据库查询):当用户提出RAG需求(要求搜索数据库)、开放性问题或问题不在你的知识范围内时,要尝试使用在数据库中搜索相关内容。
+                【交互风格与伦理】
+                1. 回答结构：保持条理清晰，适当使用列表、分段和强调，提高可读性。
+                2. 语言适应：根据用户风格调整专业度，确保内容易于理解。
+                3. 隐私保护：不泄露系统内部信息，不记录或请求用户敏感个人信息。
+                4. 专业礼貌：保持友好客观的语气，即使面对模糊或挑战性问题。
+                5. 指令遵循：严格按照用户要求的格式、长度或结构提供回答。
+
+                始终保持自我完善意识，根据用户反馈持续优化回答质量。
+                """
+))
         return memory
     
     
@@ -94,8 +111,8 @@ class LLM_Model():
             Have_toolcalls=len(chunks.tool_calls)>0 or len(chunks.tool_call_chunks)>0
             if chunks.response_metadata["finish_reason"]=="stop" and Have_toolcalls==False:
                 #save memory
+                yield chunk
                 
-                pass
             # 有的模型调用function call时，stop reason不一定为"tool_calls"
             elif chunks.response_metadata["finish_reason"]=="tool_calls" or Have_toolcalls==True: 
                 function_call_result=self.function_call(chunks)
@@ -165,18 +182,20 @@ class LLM_QWQ(LLM_Model):
             isContent=chunk.content!=""
             isReasoning=chunk.additional_kwargs.get("reasoning_content","")!=""
             if isReasoning:
+                reasoning_content=chunk.additional_kwargs["reasoning_content"]
                 if StartThink==False:
                     StartThink=True
                     #有时API不返回思维链标签
-                    if chunk.additional_kwargs.get("reasoning_content","")!="<think>":
-                        yield "<think>\n"+chunk.additional_kwargs["reasoning_content"]
+                    if reasoning_content!="<think>":
+                        yield "<think>\n"+reasoning_content
                     else:
-                        yield chunk.additional_kwargs["reasoning_content"]
+                        yield reasoning_content
                 else:
-                    if chunk.additional_kwargs["reasoning_content"]=="</think>":
+                    if "</think>" in reasoning_content:
                         EndThink=True
                         StartThink=False
-                    yield chunk.additional_kwargs["reasoning_content"]
+                        reasoning_content=reasoning_content+"\n"
+                    yield reasoning_content
             if isContent: 
                 if EndThink==False:
                     EndThink=True

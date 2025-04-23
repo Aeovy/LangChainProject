@@ -176,7 +176,7 @@ class Vectordb:
 from langchain_community.embeddings import DashScopeEmbeddings
 embed_model=DashScopeEmbeddings(model="text-embedding-v3",
                                 dashscope_api_key=os.getenv("OPENAI_EMBEDDING_API_KEY"))
-MyVectordb = Vectordb(embedding_model=embed_model,persist_directory="./RAG/dashscope",model_max_token=4096)
+MyVectordb = Vectordb(embedding_model=embed_model,persist_directory="./RAG/dashscope",model_max_token=1024)
 if __name__ == "__main__":
     
     #MyVectordb.add_file(file_path="./RAG/Data/第1章 语言模型基础.pdf")

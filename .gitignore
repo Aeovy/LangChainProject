@@ -12,3 +12,6 @@ test
 *study*.py
 .DS_Store
 *.code-workspace
+*.md
+*.jpg
+dashscope

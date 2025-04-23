@@ -102,15 +102,15 @@ def search_bilibili(keyword: str,content_type:str,content_categorie:str=None,tim
         e="出错了:"+str(e)
         return e
 @tool
-def rag(qurey:str,k:int=3)->list[dict[str,str]]:
-    """当用户存在RAG需求、开放性问题或不确定答案是否在知识库中时，请使用此工具搜索相关知识。
+def rag(query:str,k:int=3)->list[dict[str,str]]:
+    """当用户提出RAG需求、开放性问题或不确定答案是否在知识库中时，请使用此工具搜索相关知识。
 
     若未检索到有效信息，请如实告知用户："数据库中未找到相关内容"。
 
     使用说明：
-    - 在查询数据库前，请结合RAG原理和用户提问，调整查询内容以提高搜索准确性。
+    - 在查询数据库前，若有必要，则要把用户的问题分解为多个小问题，并提取出每个小问题的关键词，再多次在数据库中搜索以提高搜索的准确性。
     - 参数说明：
-        qurey: 要查询的关键词（字符串）。
+        query: 要查询的关键词（字符串）。
         k: 返回结果数量，默认为3（可根据问题范围进行调整）。
 
     返回结果：
@@ -121,7 +121,7 @@ def rag(qurey:str,k:int=3)->list[dict[str,str]]:
         }
     """
     try:
-        docs=MyVectordb.qurey_vector_db(qurey,k)
+        docs=MyVectordb.qurey_vector_db(query,k)
     except Exception as e:
         return e
     result=[]

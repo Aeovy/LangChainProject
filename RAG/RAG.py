@@ -9,8 +9,13 @@ load_dotenv()
 
 class LMStudioEmbeddings( ):
     def __init__(self,model_type:str="lmstudio"):
-        
-        self.base_url = os.getenv(f"{model_type.upper()}_EMBEDDING_BASE_URL")
+        supported_models = ["lmstudio", "openai"]
+        """"
+        支持的模型类型
+        """
+        if model_type.lower() not in supported_models:
+            raise ValueError(f"不支持的模型类型: {model_type}. 支持的模型类型: {supported_models}")
+        self.base_url = os.getenv(f"{model_type.upper()}_EMBEDDING_BASE_URL"+"/v1/embeddings")
         self.model = os.getenv(f"{model_type.upper()}_EMBEDDING_MODEL_NAME")
     
     def embed_documents(self, texts):
@@ -26,7 +31,7 @@ class LMStudioEmbeddings( ):
         """嵌入单个查询文本"""
         try:
             response = requests.post(
-                f"{self.base_url}/v1/embeddings",
+                f"{self.base_url}",
                 headers={"Content-Type": "application/json"},
                 json={
                     "model": self.model,
@@ -48,14 +53,13 @@ class LMStudioEmbeddings( ):
             print(f"嵌入请求异常: {str(e)}")
             raise e
 
-# 使用自定义嵌入类
-embed_model = LMStudioEmbeddings(model_type="lmstudio")
+
 
 from langchain_community.document_loaders import PyMuPDFLoader,UnstructuredWordDocumentLoader,UnstructuredMarkdownLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 class Vectordb:
-    def __init__(self, collection_name:str="test_DB", embedding_model:Embeddings=None, persist_directory:str="./RAG/chroma_db"):
+    def __init__(self, collection_name:str="test_DB", embedding_model:Embeddings=None, persist_directory:str="./RAG/chroma_db",model_max_token:int=512):
         """初始化向量数据库"""
         if embedding_model is None:
             raise ValueError("embedding_model不能为空")
@@ -74,7 +78,7 @@ class Vectordb:
                 self.processed_files = set(line.strip() for line in f)
                 
         self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=512,
+            chunk_size=model_max_token,
             chunk_overlap=200,
             add_start_index=True,
         )
@@ -167,12 +171,17 @@ class Vectordb:
         docs = self.vector_db.max_marginal_relevance_search(query_text, k=k)
         # 返回结果
         return docs
-
-MyVectordb = Vectordb(embedding_model=embed_model)
+# 使用自定义嵌入类
+#embed_model = LMStudioEmbeddings(model_type="lmstudio")
+from langchain_community.embeddings import DashScopeEmbeddings
+embed_model=DashScopeEmbeddings(model="text-embedding-v3",
+                                dashscope_api_key=os.getenv("OPENAI_EMBEDDING_API_KEY"))
+MyVectordb = Vectordb(embedding_model=embed_model,persist_directory="./RAG/dashscope",model_max_token=4096)
 if __name__ == "__main__":
     
     #MyVectordb.add_file(file_path="./RAG/Data/第1章 语言模型基础.pdf")
     MyVectordb.add_directory(directory_path="./RAG/Data")
+    #print(type(embed_model))
 
 
 

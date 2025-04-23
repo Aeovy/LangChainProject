@@ -3,7 +3,7 @@ import os
 
 
 
-query = "毛概 内容大纲"
+query = "毛泽东思想活的灵魂"
 results = MyVectordb.qurey_vector_db(query)
 
 # 显示结果

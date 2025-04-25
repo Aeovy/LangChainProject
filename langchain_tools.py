@@ -5,27 +5,42 @@ import inspect
 import ast
 from RAG.RAG import MyVectordb
 import os
-from typing import Any
+from typing import Any, Union
 import bilibili_api
 from bilibili_api import sync
 from bilibili_api.search import SearchObjectType
 import Functions.Functions as Functions
-@tool
-def add(a: int, b: int) -> int:
-    """Adds a and b."""
-    return a + b
+from Functions.AgentCoding import CodeAgent
 
 @tool
-def multiply(a: int, b: int) -> int:
-    """Multiplies a and b."""
-    return a * b
-
+def createfile(content:str,filename:str)->Union[dict[str,str], Exception]:
+    """
+    功能:创建文件并写入内容。
+    成功时返回创建完成的文件的绝对路径。
+    失败时返回异常信息。
+    写入代码时,不推荐写入阻塞代码。
+    参数:
+        content: 要写入文件的内容
+        filename: 文件名(包含扩展名)
+    """
+    result=CodeAgent.CreateFile(code=content,filename=filename)
+    return result
+@tool
+def runpythonfile(PythonFilePath:str)->Union[str, Exception]:
+    """
+    功能:运行指定的Python文件。
+    可以获得代码中print输出的结果。
+    参数:
+        PythonFilePath: 要运行的Python文件的绝对路径
+    返回:
+        str: 运行结果或错误信息
+    """
+    result=CodeAgent.RunPython(PythonFilePath=PythonFilePath)
+    return result
 @tool
 def get_time(format_type: str = "default") -> str:
     """
-    对于任何涉及当前日期、时间或有时效性的查询，必须调用此工具获取准确时间。
-    你的内置系统时间可能不准确，切勿依赖它回答用户问题。
-
+    时间工具,返回当前系统时间(支持多种格式)。
     参数:
         format_type: 指定返回时间格式，支持以下选项：
             - "default": 标准格式 (YYYY-MM-DD HH:MM:SS)
@@ -172,8 +187,6 @@ def parse_tools_from_source(module):
                     tools.append(func)
                     tools_dict[func_name] = func
     return tools, tools_dict
-
-
 
 current_module = sys.modules[__name__]
 tools, tools_dict = parse_tools_from_source(current_module)

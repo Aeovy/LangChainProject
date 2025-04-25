@@ -16,3 +16,4 @@ test
 *.jpg
 dashscope
 /.TEST
+/.AgentCode

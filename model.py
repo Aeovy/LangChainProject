@@ -61,11 +61,7 @@ class LLM_Model():
     *   **绝不**在常规的助手消息中输出工具调用结构。
 2.  **工具协同**: 理解每个工具的功能，并在需要时组合使用它们。例如，先用 `createfile` 创建 Python 文件，再用 `runpythonfile` 执行它。
 3.  **结果验证与纠错**: 仔细检查工具返回的结果是否合理。如果结果异常或用户指出错误，**必须**尝试重新调用工具（可能调整参数）或使用替代方法进行修正。
-4.  **可用工具**:
-    *   `createfile`: 根据用户要求，将指定的文本内容（如 Python 代码、笔记）保存到具有指定文件名的文件中。
-    *   `runpythonfile`: 执行指定绝对路径的 Python 文件，并返回其标准输出或错误信息。执行前需确认文件存在。
-    *   `get_time`: 获取当前的准确日期和时间。
-    *   `rag`: 在知识库中检索信息以回答问题。
+4.  **可用工具**: 请仔细查看各个工具的功能和参数，确保在调用时使用正确的参数格式。
 
 【Python代码编写原则】
 1.  **核心目标**: 编写能够准确、高效地实现用户需求的代码。**严禁**编写任何恶意或有害代码。
@@ -212,41 +208,62 @@ class LLM_QWQ(LLM_Model):
         """
         返回经过处理过的chunk
         """
-        isReasoning=False
-        StartThink=False
-        EndThink=False
-        isContent=False
+        # isReasoning=False
+        # StartThink=False
+        # EndThink=False
+        # isContent=False
+        #define
+        Reasoning=False
+        Content=True
+        #
+        LastChunk={"content":None,"type":None}
+        CurrentChunk={"content":None,"type":None}
         for chunk in super().chat_sync(qurey=qurey,Conversion_ID=Conversion_ID):
-            isContent=chunk.content!=""
-            isReasoning=chunk.additional_kwargs.get("reasoning_content","")!=""
-            if isReasoning:
-                reasoning_content=chunk.additional_kwargs["reasoning_content"]
-                if StartThink==False:
-                    StartThink=True
-                    #有时API不返回思维链标签
-                    if reasoning_content!="<think>":
-                        yield "<think>\n"+reasoning_content
-                    else:
-                        yield reasoning_content
-                else:
-                    if "</think>" in reasoning_content:
-                        EndThink=True
-                        StartThink=False
-                        reasoning_content=reasoning_content+"\n"
-                    yield reasoning_content
-            if isContent: 
-                if EndThink==False:
-                    EndThink=True
-                    StartThink=False
-                    yield "\n</think>\n"+chunk.content
-                else:
-                    yield chunk.content
-            # if chunk.content=="" and chunk.additional_kwargs.get("reasoning_content", "")=="":
-            #     yield "<think>"
-            # elif chunk.content=="" and chunk.additional_kwargs.get("reasoning_content", "")!="":
-            #     yield chunk.additional_kwargs["reasoning_content"]
-            # else:
-            #     yield chunk.content
+            ReasoningContent=chunk.additional_kwargs.get("reasoning_content","")
+            StanderContent=chunk.content
+            if ReasoningContent=="" and StanderContent=="":
+                pass
+            else:
+                CurrentChunk["content"]=chunk.content if StanderContent!="" else ReasoningContent
+                CurrentChunk["type"]=Content if StanderContent!="" else Reasoning
+                if CurrentChunk["type"]!=LastChunk["type"]:
+                    if CurrentChunk["type"]==Reasoning:
+                        if "<think>" not in CurrentChunk["content"]:
+                            CurrentChunk["content"]="<think>\n"+CurrentChunk["content"]
+                    elif CurrentChunk["type"]==Content:
+                        if "</think>" not in LastChunk["content"]:
+                            CurrentChunk["content"]="\n</think>\n"+CurrentChunk["content"]
+                LastChunk=CurrentChunk.copy()
+                yield CurrentChunk["content"]
+                
+
+            # isContent=chunk.content!=""
+            # isReasoning=chunk.additional_kwargs.get("reasoning_content","")!=""
+            # if isReasoning:
+            #     reasoning_content=chunk.additional_kwargs["reasoning_content"]
+            #     if StartThink==False:
+            #         StartThink=True
+            #         #有时API不返回思维链标签
+            #         if "<think>" not in reasoning_content:
+            #             yield "<think>\n"+reasoning_content
+            #         else:
+            #             yield reasoning_content
+            #     else:
+            #         if "</think>" in reasoning_content:
+            #             EndThink=True
+            #             StartThink=False
+            #             reasoning_content=reasoning_content+"\n"
+            #         yield reasoning_content
+            # if isContent: 
+            #     if EndThink==False:
+            #         EndThink=True
+            #         StartThink=False
+            #         yield "\n</think>\n"+chunk.content
+            #     else:
+            #         yield chunk.content
+            
+        if CurrentChunk["type"]==LastChunk["type"]==Reasoning:
+            pass
     def qwq_chat_print(self,qurey:str,Conversion_ID:str=None):
         """
         直接打印对话内容

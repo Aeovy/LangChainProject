@@ -18,7 +18,6 @@ def createfile(content:str,filename:str)->Union[dict[str,str], Exception]:
     功能:创建文件并写入内容。
     成功时返回创建完成的文件的绝对路径。
     失败时返回异常信息。
-    写入代码时,不推荐写入阻塞代码。
     参数:
         content: 要写入文件的内容
         filename: 文件名(包含扩展名)
@@ -28,14 +27,27 @@ def createfile(content:str,filename:str)->Union[dict[str,str], Exception]:
 @tool
 def runpythonfile(PythonFilePath:str)->Union[str, Exception]:
     """
-    功能:运行指定的Python文件。
-    可以获得代码中print输出的结果。
+    功能:运行指定的Python文件(不含阻塞式代码)。
+    可以获得代码中标准输出流的输出结果。
     参数:
         PythonFilePath: 要运行的Python文件的绝对路径
     返回:
         str: 运行结果或错误信息
     """
     result=CodeAgent.RunPython(PythonFilePath=PythonFilePath)
+    return result
+@tool
+def popenpythonfile(PythonFilePath:str)->Union[str, Exception]:
+    """
+    功能:运行指定的Python文件(含阻塞式代码)。
+    参数:
+        PythonFilePath: 要运行的Python文件的绝对路径
+    返回:
+        str: 返回程序是否运行成功的消息。
+    注意:此函数不会返回代码中的标准输出流的输出结果。
+    代码的运行结果会在用户的新建终端中显示。
+    """
+    result=CodeAgent.PopenPython(PythonFilePath=PythonFilePath)
     return result
 @tool
 def get_time(format_type: str = "default") -> str:

@@ -37,34 +37,37 @@ class AgentCoding:
         try:
             with open(f"{self.workpath}/{filename}", "w") as file:
                 file.write(code)
-                return {"filepath":f"{self.workpath}/{filename}"}
+                return {"status":"success","filepath":f"{self.workpath}/{filename}"}
         except FileNotFoundError:
             os.mkdir(self.workpath)
             return self.CreateFile(code,filename,self.workpath)
         except Exception as e:
-            return e
+            return {"status":"error","error":str(e)}
     def RunPython(self,PythonFilePath:str):
         """
-        执行没有阻塞代码的程序
+        执行没有阻塞代码的程序,10秒超时
         """
+        os.chdir(self.workpath)
         try:
-            result=subprocess.run(["python3",PythonFilePath], capture_output=True, text=True)
+            result=subprocess.run(["python3",PythonFilePath], capture_output=True, text=True,timeout=10)
             if result.stderr:
                 return result.stderr
             else:
                 if(len(result.stdout)>0):
-                    return result.stdout
+                    return {"status":"success","output":result.stdout}
                 else:
-                    return "程序执行成功,但没有输出"
+                    return {"status":"success","output":None}
         except Exception as e:
-            return e
+            return {"status":"error","error":str(e)}
     def PopenPython(self,PythonFilePath:str):
         """
         执行有阻塞代码的程序
         """
+        os.chdir(self.workpath)
         try:
             process=subprocess.Popen(self.__GetTerminalCommand_Python__(PythonFilePath))
+            return {"status":"success","pid":process.pid}
         except Exception as e:
-            return e
+            return {"status":"error","error":str(e)}
         
 CodeAgent=AgentCoding()

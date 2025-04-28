@@ -40,7 +40,7 @@ class AgentCoding:
                 return {"status":"success","filepath":f"{self.workpath}/{filename}"}
         except FileNotFoundError:
             os.mkdir(self.workpath)
-            return self.CreateFile(code,filename,self.workpath)
+            return self.CreateFile(code,filename)
         except Exception as e:
             return {"status":"error","error":str(e)}
     def RunPython(self,PythonFilePath:str):

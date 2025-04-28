@@ -18,8 +18,10 @@ LMSTUDIO_EMBEDDING_BASE_URL="http://localhost:1234"
 LMSTUDIO_EMBEDDING_API_KEY="LMSTUDIO_EMBEDDING_API_KEY" 
 
 的环境变量，可以自行更改其中的模型。
+在RAG/RAG.py中可以使用本地lmstudio的embedding模型,修改embed_model变量的初始化类为LMStudioEmbeddings即可
 3.在RAG文件夹中的Data文件夹中放入你的文件，并运行RAG.py,RAG_USE仅用于测试向量数据库
 4.使用Use_LLM.py即可对话
 TODO：
 1.把RAG改成Light RAG，以支持知识图谱
 2.使用fastapi开放出接口，以供前端使用
+3.增加AgentCoding的多系统支持

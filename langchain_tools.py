@@ -50,6 +50,17 @@ def popenpythonfile(PythonFilePath:str)->Union[str, Exception]:
     result=CodeAgent.PopenPython(PythonFilePath=PythonFilePath)
     return result
 @tool
+def pipinstall(package:str)->Union[str, Exception]:
+    """
+    功能:安装指定的Python包。
+    参数:
+        package: 要安装的Python包的名称
+    返回:
+        str: 安装结果或错误信息
+    """
+    result=CodeAgent.PipInstall(PackageName=package)
+    return result
+@tool
 def get_time(format_type: str = "default") -> str:
     """
     时间工具,返回当前系统时间(支持多种格式)。
@@ -78,26 +89,22 @@ def get_time(format_type: str = "default") -> str:
         return time.strftime("%Y-%m-%d %H:%M:%S", local_time)
 @tool
 def search_bilibili(keyword: str,content_type:str,content_categorie:str=None,time_start:str=None,time_end:str=None,result_num:int=20)-> dict :
-    """
-    当用户需要在Bilibili(B站，哔哩哔哩)上搜索时，可以使用此工具。
+    """当用户需要在Bilibili(B站，哔哩哔哩)上搜索时，可以使用此工具。
     content_type参数用于指定要搜索的内容的类型，可选值包括：
     ["视频","番剧","影视"  "直播","专栏","话题","用户","直播间用户"],默认为"视频"。
     content_categorie参数用于指定内容的分类，可选值包括：
-    ["番剧", "电影", "国创", "电视剧", "综艺", "纪录片", "动画",
-    "游戏", "鬼畜", "音乐", "舞蹈", "影视", "娱乐", "知识","科技数码", 
-    "资讯", "美食", "小剧场", "汽车", "时尚美妆","体育运动"]。
+    ["番剧", "电影", "国创", "电视剧", "纪录片", "动画", "游戏", "鬼畜", "音乐", "舞蹈", "影视", "娱乐", "知识", "科技", "资讯", "美食", "生活", "汽车", "时尚", "运动", "动物圈"]。
     如果不指定类型，则搜索所有类型的视频。
-    time_start参数用于指定搜索的内容的时间范围的起始时间，time_end参数用则用于指定结束时间，格式为："YYYY-MM-DD"。
-    result_num参数用于指定返回结果的数量，默认为20。
-    """
+    time_start和time_end参数用于指定搜索的时间范围，以日为单位，格式为："YYYY-MM-DD"。"""
     #get content_categories_id
     content_categorie_id=None
-    content_categories=["番剧", "电影", "国创", "电视剧", "综艺", "纪录片", "动画", 
-                        "游戏", "鬼畜", "音乐", "舞蹈", "影视", "娱乐", "知识", 
-                        "科技数码", "资讯", "美食", "小剧场", "汽车", "时尚美妆",
-                        "体育运动"]
+    content_categories=["番剧", "电影", "国创", "电视剧", "纪录片", "动画", 
+                    "游戏", "鬼畜", "音乐", "舞蹈", "影视", "娱乐", "知识", 
+                    "科技", "资讯", "美食", "生活", "汽车", "时尚", "运动", "动物圈"]
     if content_categorie in content_categories:
-        content_categorie_id = bilibili_api.video_zone.get_zone_info_by_name(content_categorie)[0]["tid"]
+        zone_info=bilibili_api.video_zone.get_zone_info_by_name(content_categorie)
+        if zone_info[0] is not None:
+            content_categorie_id=zone_info[0]["tid"]
     #get content_type
     types_map={
         "视频":SearchObjectType.VIDEO,
@@ -109,7 +116,7 @@ def search_bilibili(keyword: str,content_type:str,content_categorie:str=None,tim
         "用户":SearchObjectType.USER,
         "直播间用户":SearchObjectType.LIVEUSER
     }
-    content_type=types_map.get(content_type,SearchObjectType.VIDEO)
+    content_type=types_map.get(content_type,SearchObjectType.VIDEO)#Default:视频
     #验证时间合法性
     time_start=Functions.validate_date_format(time_start)
     time_end=Functions.validate_date_format(time_end)
@@ -122,7 +129,7 @@ def search_bilibili(keyword: str,content_type:str,content_categorie:str=None,tim
                                                     ))
         API_result=API_result["result"]
         return_result=[]
-        for item in API_result[:result_num]:
+        for item in API_result[:5]:
             return_result.append(Functions.extract_bilibili_video_info(item))
         return return_result
     except Exception as e:

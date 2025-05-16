@@ -59,7 +59,7 @@ from langchain_community.document_loaders import PyMuPDFLoader,UnstructuredWordD
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 class Vectordb:
-    def __init__(self, collection_name:str="test_DB", embedding_model:Embeddings=None, persist_directory:str="./RAG/chroma_db",model_max_token:int=512):
+    def __init__(self, collection_name:str="test_DB", embedding_model:Embeddings|None=None, persist_directory:str="./RAG/chroma_db",model_max_token:int=512):
         """初始化向量数据库"""
         if embedding_model is None:
             raise ValueError("embedding_model不能为空")

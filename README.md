@@ -40,7 +40,7 @@ LMSTUDIO_EMBEDDING_API_KEY="LMSTUDIO_EMBEDDING_API_KEY"
 - 使用`Use_LLM.py`即可开始对话
 
 ## 待办事项
-
+- [ ] 代码全部规范化以符合pylance语法Stander级检查
 - [ ] 将RAG改进为Light RAG，以支持知识图谱
 - [ ] 使用FastAPI开放接口，以供前端使用
 - [ ] 增加AgentCoding的多系统支持

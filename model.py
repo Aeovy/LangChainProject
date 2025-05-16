@@ -1,7 +1,7 @@
 import os
 from langchain_openai import ChatOpenAI
 from langchain_qwq import ChatQwQ
-from langchain_core.messages import ToolMessage,HumanMessage,AIMessage,SystemMessage
+from langchain_core.messages import ToolMessage,HumanMessage,AIMessage,SystemMessage,AIMessageChunk
 from langchain_tools import tools,tools_dict
 from dotenv import load_dotenv
 from langchain_core.runnables.history import RunnableWithMessageHistory
@@ -116,7 +116,7 @@ class LLM_Base():
         else:
             pass
     
-    def chat_sync(self, qurey:str=None,Conversion_ID:str=None):
+    def chat_sync(self, qurey:str|None=None,Conversion_ID:str|None=None):
         """
         返回未经处理过的chunk
         """
@@ -174,12 +174,12 @@ class LLM_Base():
                 try:   
                 ###############Use tools#############
                     #print("test",tool_calls["name"])
-                    selected_tool = self.tools_dict[tool_calls["name"].lower()]
+                    selected_tool = self.tools_dict[tool_calls["name"]]
                     tool_output = selected_tool.invoke(tool_calls)
                     result.append(tool_output) 
                 #####################################
                 except Exception as e:
-                    result.append(ToolMessage(e))
+                    result.append(ToolMessage(content=e,tool_call_id=tool_calls["tool_call_id"]))
         return result
 class LLM_QWQ(LLM_Base):
     def __init__(self, model_name:str="",api_key:str="",base_url="",temperature: float=0.6,tools: list=None,tools_dict: dict=None,maxtoken=2048):
@@ -229,9 +229,8 @@ class LLM_QWQ(LLM_Base):
                         if "</think>" not in LastChunk["content"] and LastChunk["type"]==Reasoning:
                             CurrentChunk["content"]="\n</think>\n"+CurrentChunk["content"]
                 LastChunk=CurrentChunk.copy()
-                yield CurrentChunk["content"]
-                            
-        if CurrentChunk["type"]==LastChunk["type"]==Reasoning:
+                yield CurrentChunk["content"]                    
+        if CurrentChunk["type"]==LastChunk["type"]==Reasoning:#有时模型会调用多组工具,对话间持续思考
             pass
     def qwq_chat_print(self,qurey:str,Conversion_ID:str=None):
         """
@@ -241,55 +240,57 @@ class LLM_QWQ(LLM_Base):
             print(response_str,end="",flush=True)
             
 class LLM_Qwen3(LLM_Base):
-    def __init__(self):
-        pass    
-#import asyncio
-##待开发
-# class LLM_Model_async(LLM_Model):
-#     def __init__(self, model_type: str="ollama",temperature: float=0.6,tools: list=None,tools_dict: dict=None,maxtoken=2048):
-#         super().__init__(model_type,temperature,tools,tools_dict,maxtoken)
-#     async def load_memory_async(self,conversion_id)-> SQLChatMessageHistory:
-#         async_engine = create_async_engine("sqlite+aiosqlite:///memory.db")
-#         async_message_history = SQLChatMessageHistory(
-#         session_id=conversion_id, connection=async_engine,
-#         )
-#     async def chat_async(self, qurey:str=None,Conversion_ID:str=None):
-#         self.LLM_async=RunnableWithMessageHistory(
-#             self.LLM,
-#             self.load_memory_async,
-#             )
-#         async_message_history=await self.load_memory_async(Conversion_ID)
-        # return async_message_history
-#         if qurey is not None:
-#             await chat_history.aadd_message(HumanMessage(content=qurey))
-#         chunks=None
-#         async for chunk in self.LLM_async.astream(chat_history,config={"configurable": {"session_id": Conversion_ID}}):
-#             #print("chunk:",chunk)
-#             if chunks is None:
-#                 chunks=chunk
-#             else:
-#                 chunks=chunks+chunk
-#             # 正常传输内容时，直接输出LLM的content###############
-#             if chunk.content!="":
-#                 print(chunk.content,end="",flush=True)
-#                 pass
-#             ###################################################
-#         #print("chunks",chunks)
-#         if chunks.response_metadata.get("finish_reason","")!="":
-#             print("Chunks:",chunks)
-#             Have_toolcalls=len(chunks.tool_calls)>0
-#             if chunks.response_metadata["finish_reason"]=="stop" and Have_toolcalls==False:
-#                 #save memory
-                
-#                 pass
-#             # 有的模型调用function call时，stop reason不一定为"tool_calls"
-#             elif chunks.response_metadata["finish_reason"]=="tool_calls" or Have_toolcalls==True: 
-                
-#                 function_call_result=self.function_call(chunks)
-#                 for function_msg in function_call_result:
-#                     chat_history.add_message(function_msg)
-#                 task=asyncio.create_task(self.chat_async(None,Conversion_ID))
-#                 await task 
-#             else:
-#                 #print("debug_status:",chunks)
-#                 pass
+    def __init__(self, model_name:str="",api_key:str="",base_url="",temperature: float=0.6,tools: list=None,tools_dict: dict=None,maxtoken=2048):
+        if model_name=="" or api_key=="":
+            error=""
+            if model_name=="":
+                error+="model_name "
+            if api_key=="":
+                error+="api_key "
+            raise ValueError(f"{error}不能为空")
+        self.__api_key = api_key
+        self.model_name = model_name
+        self.base_url = base_url
+        self.LLM=ChatQwQ(
+            model=self.model_name,
+            api_key=self.__api_key,
+            api_base=self.base_url,
+            temperature=temperature,
+            max_tokens=maxtoken,
+            streaming=True,
+            extra_body={
+                "enable_thinking": True
+            }
+        )
+        self._memory_cache: dict[str,SQLChatMessageHistory] = {}#add manually,no super method
+        self.LLM=self.bindtools(tools, tools_dict)    
+    def qwen3_chat(self,query:str=None,Conversion_ID:str=None,ThinkingMode:bool=True):
+        """
+        返回经过处理过的chunk
+        """
+        self.LLM.extra_body["enable_thinking"]=ThinkingMode
+        #define
+        Reasoning=False
+        Content=True
+        #
+        LastChunk={"content":"","type":None}
+        CurrentChunk={"content":"","type":None}
+        for chunk in super().chat_sync(qurey=query,Conversion_ID=Conversion_ID):
+            ReasoningContent=chunk.additional_kwargs.get("reasoning_content","")
+            StanderContent=chunk.content
+            if ReasoningContent=="" and StanderContent=="":
+                pass
+            else:
+                CurrentChunk["content"]=chunk.content if StanderContent!="" else ReasoningContent
+                CurrentChunk["type"]=Content if StanderContent!="" else Reasoning
+                if CurrentChunk["type"]!=LastChunk["type"]:
+                    if CurrentChunk["type"]==Reasoning:
+                        if "<think>" not in CurrentChunk["content"]:
+                            CurrentChunk["content"]="<think>\n"+CurrentChunk["content"]
+                    elif CurrentChunk["type"]==Content:
+                        if "</think>" not in LastChunk["content"] and LastChunk["type"]==Reasoning:
+                            CurrentChunk["content"]="\n</think>\n"+CurrentChunk["content"]
+                LastChunk=CurrentChunk.copy()
+                yield CurrentChunk["content"]            
+        if CurrentChunk["type"]==LastChunk["type"]==Reasoning:
+            pass

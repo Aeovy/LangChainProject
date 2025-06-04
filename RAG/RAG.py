@@ -54,7 +54,6 @@ class LMStudioEmbeddings( ):
             raise e
 
 
-
 from langchain_community.document_loaders import PyMuPDFLoader,UnstructuredWordDocumentLoader,UnstructuredMarkdownLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 

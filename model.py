@@ -1,4 +1,5 @@
 import os
+import secrets
 from langchain_openai import ChatOpenAI
 from langchain_qwq import ChatQwQ
 from langchain_core.messages import ToolMessage,HumanMessage,AIMessage,SystemMessage,AIMessageChunk
@@ -22,11 +23,11 @@ class LLM_Base():
         self.model_name = model_name
         self.base_url = base_url
         self.LLM=ChatOpenAI(
-            model_name=self.model_name,
+            model=self.model_name,
             api_key=self.__api_key,
             base_url=self.base_url,
             temperature=temperature,
-            max_tokens=maxtoken,
+            max_completion_tokens=maxtoken,
             streaming=True,
         )
         self.LLM=self.bindtools(tools, tools_dict)

@@ -6,11 +6,14 @@ from prompt_toolkit import prompt
 from prompt_toolkit.completion import WordCompleter
 if __name__ == "__main__":
    commands = WordCompleter(["exit","clear","enable_thinking","disable_thinking"],ignore_case=True)
-   #LLM=LLM_Model(model_type="openai",temperature=0.6,tools=tools,tools_dict=tools_dict)
-   load_dotenv()
+#    LLM=LLM_Base(model_name=os.getenv("OPENAI_MODEL_NAME"),api_key=os.getenv("OPENAI_API_KEY"),
+#                base_url=os.getenv("OPENAI_BASE_URL"),temperature=0.6,maxtoken=8192,
+#                tools=tools,tools_dict=tools_dict)
+
    LLM=LLM_Qwen3(model_name=os.getenv("OPENAI_MODEL_NAME"),api_key=os.getenv("OPENAI_API_KEY"),
                base_url=os.getenv("OPENAI_BASE_URL"),temperature=0.6,maxtoken=8192,
                tools=tools,tools_dict=tools_dict)
+
 #    LLM=LLM_Qwen3(model_name=os.getenv("LMSTUDIO_MODEL_NAME"),api_key=os.getenv("LMSTUDIO_API_KEY"),
 #                 base_url=os.getenv("LMSTUDIO_BASE_URL"),temperature=0.6,maxtoken=8192,
 #                 tools=tools,tools_dict=tools_dict)
@@ -36,6 +39,6 @@ if __name__ == "__main__":
     else:
         print("\nAI:")
         for msg in LLM.qwen3_chat(query=qurey,Conversion_ID=conversion_id,ThinkingMode=EnableThinking):
-
+        #for msg in LLM.openai_chat(qurey=qurey,Conversion_ID=conversion_id):
             print(msg,end="",flush=True)
         print("\n")

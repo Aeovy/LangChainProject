@@ -151,7 +151,7 @@ class LLM_Base():
                 for function_msg in function_call_result:
                     chat_history.add_message(function_msg)
                 self._memory_cache[Conversion_ID]=chat_history
-                yield from self.chat_sync(None,Conversion_ID)
+                yield from self.chat_sync(None,Conversion_ID) #递归
             else:
                 #print("debug_status:",chunks)
                 pass

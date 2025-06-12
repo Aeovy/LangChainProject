@@ -6,6 +6,7 @@ import time
 import hashlib
 import uuid
 import os
+import base64
 from dotenv import load_dotenv
 from model import LLM_Base, LLM_QWQ, LLM_Qwen3
 from langchain_tools import tools, tools_dict
@@ -61,7 +62,7 @@ def init_llm():
 def init_default_users():
     """初始化默认测试用户"""
     admin_user_id = str(uuid.uuid4())
-    admin_api_key = generate_api_key()
+    admin_api_key = generate_api_key('admin@test.com')
     
     users_database[admin_user_id] = {
         'username': 'admin',
@@ -105,7 +106,7 @@ class ChatRequest(BaseModel):
     ApiKey: Optional[str]
     Model: str
     EnableThink: bool
-    ConversationId: Optional[str] = None  # 添加会话ID
+    ConversationId: Optional[int] = None  # 改为number类型
     Stream: bool = False  # 添加流式传输选项
 
 # 标题请求数据模型
@@ -113,7 +114,6 @@ class TitleRequest(BaseModel):
     Message: Message
     ApiKey: Optional[str]
     Model: str
-    ConversationId: Optional[str] = None
 
 # 响应数据模型
 class ServerResponse(BaseModel):
@@ -121,7 +121,7 @@ class ServerResponse(BaseModel):
 
 class ChatResponse(ServerResponse):
     Message: Message
-    ConversationId: Optional[str] = None
+    ConversationID: Optional[str] = None
 
 class TitleResponse(ChatResponse):
     pass
@@ -137,9 +137,26 @@ class RegisterResponse(ServerResponse):
 def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
-# 工具函数：生成API Key
-def generate_api_key() -> str:
-    return str(uuid.uuid4()).replace('-', '')
+# 工具函数：生成API Key（包含用户email编码）
+def generate_api_key(user_email: str) -> str:
+    """生成包含用户email编码的API Key"""
+    # 使用base64编码email，然后加上随机字符串
+    email_encoded = base64.b64encode(user_email.encode()).decode()
+    random_part = str(uuid.uuid4()).replace('-', '')[:16]
+    return f"{email_encoded}_{random_part}"
+
+# 工具函数：从API Key解析用户email
+def decode_email_from_api_key(api_key: str) -> Optional[str]:
+    """从API Key中解析用户email"""
+    try:
+        parts = api_key.split('_')
+        if len(parts) != 2:
+            return None
+        email_encoded = parts[0]
+        email = base64.b64decode(email_encoded.encode()).decode()
+        return email
+    except Exception:
+        return None
 
 # 工具函数：验证API Key
 def validate_api_key(api_key: str) -> Optional[Dict[str, Any]]:
@@ -149,19 +166,61 @@ def validate_api_key(api_key: str) -> Optional[Dict[str, Any]]:
             return user_data
     return None
 
+# 工具函数：生成唯一对话标识符
+def generate_unique_conversation_id(user_email: str, conversation_id: int) -> str:
+    """使用用户email和ConversationID生成唯一对话标识符"""
+    # 使用email和conversation_id的组合生成唯一标识符
+    unique_string = f"{user_email}:{conversation_id}"
+    # 使用SHA256生成固定长度的唯一标识符
+    unique_hash = hashlib.sha256(unique_string.encode()).hexdigest()[:16]
+    return f"conv_{unique_hash}"
+
 # 工具函数：获取或创建会话ID
-def get_or_create_conversation_id(user_data: Dict[str, Any], conversation_id: Optional[str] = None) -> str:
+def get_or_create_conversation_id(user_data: dict[str, Any], user_email: str, conversation_id: Optional[int] = None) -> str:
     """获取或创建会话ID"""
-    if conversation_id and conversation_id in user_data['conversations']:
-        return conversation_id
-    
-    # 创建新的会话ID
-    new_conversation_id = str(uuid.uuid4())
-    user_data['conversations'][new_conversation_id] = {
-        'created_at': time.time(),
-        'messages': []
-    }
-    return new_conversation_id
+    if conversation_id is not None:
+        # 使用用户email和conversation_id生成唯一标识符
+        unique_conv_id = generate_unique_conversation_id(user_email, conversation_id)
+        
+        # 如果会话已存在，返回现有的
+        if unique_conv_id in user_data['conversations']:
+            return unique_conv_id
+        
+        # 创建新的会话
+        user_data['conversations'][unique_conv_id] = {
+            'created_at': time.time(),
+            'messages': [],
+            'client_conversation_id': conversation_id,
+            'user_email': user_email
+        }
+        return unique_conv_id
+    else:
+        # 如果没有指定conversation_id，查找是否有最近的会话，否则创建新的
+        # 查找最近的会话（按创建时间排序）
+        recent_conversations = sorted(
+            user_data['conversations'].items(),
+            key=lambda x: x[1].get('created_at', 0),
+            reverse=True
+        )
+        
+        # 如果有最近的会话且是在最近24小时内创建的，继续使用
+        if recent_conversations:
+            latest_conv_id, latest_conv_data = recent_conversations[0]
+            time_diff = time.time() - latest_conv_data.get('created_at', 0)
+            
+            # 如果最近的会话在24小时内且没有client_conversation_id（即也是系统生成的），则继续使用
+            if time_diff < 86400 and latest_conv_data.get('client_conversation_id') is None:
+                return latest_conv_id
+        
+        # 创建新的UUID会话ID
+        new_conversation_id = str(uuid.uuid4())
+        user_data['conversations'][new_conversation_id] = {
+            'created_at': time.time(),
+            'messages': [],
+            'client_conversation_id': None,
+            'user_email': user_email
+        }
+        return new_conversation_id
 
 # 初始化
 init_default_users()
@@ -210,7 +269,7 @@ async def register(request: RegisterRequest):
         
         # 创建新用户
         user_id = str(uuid.uuid4())
-        api_key = generate_api_key()
+        api_key = generate_api_key(request.Email)
         
         users_database[user_id] = {
             'username': request.UserName,
@@ -293,125 +352,10 @@ async def chat(request: ChatRequest):
         # 保持原有的非流式逻辑
         return await chat_normal_handler(request)
 
-# 流式处理函数
+# 流式处理函数 not used
 async def chat_stream_handler(request: ChatRequest):
     """处理流式聊天请求"""
-    
-    # 验证逻辑（与原有逻辑相同）
-    if llm_instance is None:
-        return StreamingResponse(
-            iter([f"data: {json.dumps({'error': 'LLM服务未初始化，请联系管理员', 'type': 'error'})}\n\n"]),
-            media_type="text/plain"
-        )
-    
-    if not request.ApiKey:
-        return StreamingResponse(
-            iter([f"data: {json.dumps({'error': 'API Key不能为空', 'type': 'error'})}\n\n"]),
-            media_type="text/plain"
-        )
-    
-    user_data = validate_api_key(request.ApiKey)
-    if not user_data:
-        return StreamingResponse(
-            iter([f"data: {json.dumps({'error': '无效的API Key', 'type': 'error'})}\n\n"]),
-            media_type="text/plain"
-        )
-    
-    if not request.Model:
-        return StreamingResponse(
-            iter([f"data: {json.dumps({'error': '模型不能为空', 'type': 'error'})}\n\n"]),
-            media_type="text/plain"
-        )
-    
-    if not request.Message or not request.Message.Content:
-        return StreamingResponse(
-            iter([f"data: {json.dumps({'error': '消息内容不能为空', 'type': 'error'})}\n\n"]),
-            media_type="text/plain"
-        )
-    
-    # 获取或创建会话ID
-    conversation_id = get_or_create_conversation_id(user_data, request.ConversationId)
-    
-    # 记录用户消息
-    user_data['conversations'][conversation_id]['messages'].append({
-        'role': request.Message.Role,
-        'content': request.Message.Content,
-        'timestamp': time.time()
-    })
-    
-    print(f"流式聊天请求:")
-    print(f"模型: {request.Model}")
-    print(f"用户消息: {request.Message.Content}")
-    print(f"会话ID: {conversation_id}")
-    print(f"启用思考模式: {request.EnableThink}")
-    
-    def generate_stream():
-        """生成流式响应"""
-        try:
-            ai_response_content = ""
-            
-            # 发送会话ID和开始信号
-            yield f"data: {json.dumps({'conversation_id': conversation_id, 'type': 'start', 'success': True})}\n\n"
-            
-            # 使用qwen3_chat方法获取流式响应
-            for chunk in llm_instance.qwen3_chat(
-                query=request.Message.Content,
-                Conversion_ID=conversation_id,
-                ThinkingMode=request.EnableThink
-            ):
-                ai_response_content += chunk
-                
-                # 发送流式数据块
-                chunk_data = {
-                    'content': chunk,
-                    'type': 'content',
-                    'conversation_id': conversation_id,
-                    'success': True
-                }
-                yield f"data: {json.dumps(chunk_data)}\n\n"
-            
-            # 记录完整的AI响应
-            user_data['conversations'][conversation_id]['messages'].append({
-                'role': 'Ai',
-                'content': ai_response_content,
-                'timestamp': time.time()
-            })
-            
-            # 发送完成信号
-            completion_data = {
-                'type': 'complete',
-                'conversation_id': conversation_id,
-                'full_content': ai_response_content,
-                'success': True,
-                'message': {
-                    'Role': 'Ai',
-                    'Content': ai_response_content
-                }
-            }
-            yield f"data: {json.dumps(completion_data)}\n\n"
-            
-            print(f"流式AI响应完成: {ai_response_content[:100]}...")
-            
-        except Exception as llm_error:
-            print(f"流式LLM调用错误: {llm_error}")
-            error_data = {
-                'type': 'error',
-                'error': f"LLM处理失败: {str(llm_error)}",
-                'success': False
-            }
-            yield f"data: {json.dumps(error_data)}\n\n"
-    
-    return StreamingResponse(
-        generate_stream(),
-        media_type="text/plain",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "*",
-            "Access-Control-Allow-Methods": "*"
-        }
-    )
+    pass
 
 # 非流式处理函数（保持原有逻辑）
 async def chat_normal_handler(request: ChatRequest) -> ChatResponse:
@@ -438,6 +382,21 @@ async def chat_normal_handler(request: ChatRequest) -> ChatResponse:
                 Message=Message(Role="Ai", Content="无效的API Key")
             )
         
+        # 从API Key中解析用户email
+        user_email = decode_email_from_api_key(request.ApiKey)
+        if not user_email:
+            return ChatResponse(
+                IsRequestSuccess=False,
+                Message=Message(Role="Ai", Content="无法解析API Key中的用户信息")
+            )
+        
+        # 验证解析出的email与数据库中的email一致
+        if user_email != user_data['email']:
+            return ChatResponse(
+                IsRequestSuccess=False,
+                Message=Message(Role="Ai", Content="API Key验证失败")
+            )
+        
         # 验证其他必填字段
         if not request.Model:
             return ChatResponse(
@@ -452,7 +411,7 @@ async def chat_normal_handler(request: ChatRequest) -> ChatResponse:
             )
         
         # 获取或创建会话ID
-        conversation_id = get_or_create_conversation_id(user_data, request.ConversationId)
+        conversation_id = get_or_create_conversation_id(user_data, user_email, request.ConversationId)
         
         # 记录用户消息
         user_data['conversations'][conversation_id]['messages'].append({
@@ -462,10 +421,13 @@ async def chat_normal_handler(request: ChatRequest) -> ChatResponse:
         })
         
         print(f"处理聊天请求:")
+        print(f"用户邮箱: {user_email}")
+        print(f"客户端ConversationId: {request.ConversationId}")
+        print(f"生成的会话ID: {conversation_id}")
         print(f"模型: {request.Model}")
         print(f"用户消息: {request.Message.Content}")
-        print(f"会话ID: {conversation_id}")
         print(f"启用思考模式: {request.EnableThink}")
+        print(f"当前用户会话数量: {len(user_data['conversations'])}")
         
         # 调用LLM生成响应
         try:
@@ -553,13 +515,13 @@ async def get_title(request: TitleRequest):
                 Message=Message(Role="Title", Content="消息内容不能为空")
             )
         
-        # 获取会话ID
-        conversation_id = request.ConversationId or str(uuid.uuid4())
+        # 生成随机的临时会话ID用于LLM调用
+        temp_conversation_id = str(uuid.uuid4())
         
         print(f"生成标题请求:")
         print(f"模型: {request.Model}")
         print(f"消息: {request.Message.Content}")
-        print(f"会话ID: {conversation_id}")
+        print(f"临时会话ID: {temp_conversation_id}")
         
         # 构造生成标题的提示词
         title_prompt = f"请为以下对话内容生成一个简短的标题（不超过20个字符）：\n{request.Message.Content}"
@@ -570,7 +532,7 @@ async def get_title(request: TitleRequest):
             # 使用LLM生成标题
             for chunk in llm_instance.qwen3_chat(
                 query=title_prompt,
-                Conversion_ID=conversation_id + "_title",  # 使用不同的会话ID避免混淆
+                Conversion_ID=temp_conversation_id + "_title",  # 使用不同的会话ID避免混淆
                 ThinkingMode=False  # 生成标题不需要思考模式
             ):
                 title_content += chunk
@@ -590,7 +552,7 @@ async def get_title(request: TitleRequest):
             return TitleResponse(
                 IsRequestSuccess=True,
                 Message=title_message,
-                ConversationId=conversation_id
+                ConversationId=temp_conversation_id
             )
             
         except Exception as llm_error:

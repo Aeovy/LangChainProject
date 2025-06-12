@@ -1,7 +1,6 @@
 from langchain_chroma import Chroma
 from langchain_core.embeddings import Embeddings
 import requests
-import numpy as np
 from dotenv import load_dotenv
 import os
 import tqdm
@@ -91,7 +90,6 @@ class Vectordb:
                 f.write(f"{filename}\n")
     
     def read_file(self,file_path:str):
-        # ...原代码保持不变...
         if file_path.endswith(".pdf"):
             return PyMuPDFLoader(file_path).load()
         elif file_path.endswith(".txt"):

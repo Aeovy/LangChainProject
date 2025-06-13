@@ -16,4 +16,5 @@ test
 *.jpg
 dashscope
 /.TEST
-AgentCode
+SandBox
+.vscode/

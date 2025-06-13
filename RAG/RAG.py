@@ -1,7 +1,6 @@
 from langchain_chroma import Chroma
 from langchain_core.embeddings import Embeddings
 import requests
-import numpy as np
 from dotenv import load_dotenv
 import os
 import tqdm
@@ -54,12 +53,11 @@ class LMStudioEmbeddings( ):
             raise e
 
 
-
 from langchain_community.document_loaders import PyMuPDFLoader,UnstructuredWordDocumentLoader,UnstructuredMarkdownLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 class Vectordb:
-    def __init__(self, collection_name:str="test_DB", embedding_model:Embeddings=None, persist_directory:str="./RAG/chroma_db",model_max_token:int=512):
+    def __init__(self, collection_name:str="test_DB", embedding_model:Embeddings|None=None, persist_directory:str="./RAG/chroma_db",model_max_token:int=512):
         """初始化向量数据库"""
         if embedding_model is None:
             raise ValueError("embedding_model不能为空")
@@ -92,7 +90,6 @@ class Vectordb:
                 f.write(f"{filename}\n")
     
     def read_file(self,file_path:str):
-        # ...原代码保持不变...
         if file_path.endswith(".pdf"):
             return PyMuPDFLoader(file_path).load()
         elif file_path.endswith(".txt"):

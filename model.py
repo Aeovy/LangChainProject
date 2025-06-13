@@ -1,41 +1,46 @@
 import os
+import secrets
 from langchain_openai import ChatOpenAI
 from langchain_qwq import ChatQwQ
-from langchain_core.messages import ToolMessage,HumanMessage,AIMessage,SystemMessage
+from langchain_core.messages import ToolMessage,HumanMessage,AIMessage,SystemMessage,AIMessageChunk
 from langchain_tools import tools,tools_dict
 from dotenv import load_dotenv
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_community.chat_message_histories import SQLChatMessageHistory
 from sqlalchemy.ext.asyncio import create_async_engine
-class LLM_Model():
-    def __init__(self,model_name:str="",api_key:str="",base_url="",temperature: float=0.6,tools: list=None,tools_dict: dict=None,maxtoken=2048):
-        if model_name=="" or api_key=="":
+class LLM_Base():
+    def __init__(self,model_name:str="",api_key:str="",base_url:str="",temperature: float=0.6,tools: list=None,tools_dict: dict=None,maxtoken:int=8192):
+        if model_name=="" or api_key==""or base_url=="":
             error=""
             if model_name=="":
                 error+="model_name "
             if api_key=="":
                 error+="api_key "
+            if base_url=="":
+                error+="base_url "
             raise ValueError(f"{error}不能为空")
         self.__api_key = api_key
         self.model_name = model_name
         self.base_url = base_url
         self.LLM=ChatOpenAI(
-            model_name=self.model_name,
+            model=self.model_name,
             api_key=self.__api_key,
             base_url=self.base_url,
             temperature=temperature,
-            max_tokens=maxtoken,
+            max_completion_tokens=maxtoken,
             streaming=True,
         )
-        
         self.LLM=self.bindtools(tools, tools_dict)
-        
-         ####加入对话记忆####
-         
-    def load_memory(self,conversion_id)-> SQLChatMessageHistory:
-        memory=SQLChatMessageHistory(conversion_id, connection="sqlite:///memory.db")
-        if(len(memory.messages)==0):
-            memory.add_message(SystemMessage(content=
+        self._memory_cache: dict[str,SQLChatMessageHistory] = {}
+    ####加入对话记忆####     
+    def load_memory(self,conversion_id:str)-> SQLChatMessageHistory:
+        if conversion_id in self._memory_cache:
+            #print("developer:Using Cache")
+            return self._memory_cache[conversion_id]
+        else:
+            memory:SQLChatMessageHistory=SQLChatMessageHistory(conversion_id, connection="sqlite:///memory.db")
+            if(len(memory.messages)==0):
+                memory.add_message(SystemMessage(content=
 """
 你是一位由Aeovy开发的具备高级问题解决能力的个人AI助手。你的核心优势在于能够熟练运用多种客户端工具，特别是能够根据用户需求编写、创建并执行Python代码来完成各种任务。
 请严格遵循以下指导原则:
@@ -112,14 +117,10 @@ class LLM_Model():
         else:
             pass
     
-    def chat_sync(self, qurey:str=None,Conversion_ID:str=None):
+    def chat_sync(self, qurey:str|None=None,Conversion_ID:str|None=None):
         """
         返回未经处理过的chunk
         """
-        self.LLM_sync=RunnableWithMessageHistory(
-            self.LLM,
-            self.load_memory,
-            )
         if Conversion_ID is None or Conversion_ID=="":
             raise ValueError("Conversion_ID is None")
         else:
@@ -135,16 +136,13 @@ class LLM_Model():
                 chunks=chunks+chunk
             # 正常传输内容时，直接输出LLM的content###############
             yield chunk
-            # if chunk.content!="":
-            #     print(chunk.content,end="",flush=True)
-            ###################################################
-        #print("chunks",chunks)
         if chunks.response_metadata.get("finish_reason","")!="":
-            #print("Chunks:",chunks)
+            #save memory
             chat_history.add_ai_message(chunks)
+            self._memory_cache[Conversion_ID]=chat_history
             Have_toolcalls=len(chunks.tool_calls)>0 or len(chunks.tool_call_chunks)>0
             if chunks.response_metadata["finish_reason"]=="stop" and Have_toolcalls==False:
-                #save memory
+                
                 yield chunk
                 
             # 有的模型调用function call时，stop reason不一定为"tool_calls"
@@ -152,7 +150,8 @@ class LLM_Model():
                 function_call_result=self.function_call(chunks)
                 for function_msg in function_call_result:
                     chat_history.add_message(function_msg)
-                yield from self.chat_sync(None,Conversion_ID)
+                self._memory_cache[Conversion_ID]=chat_history
+                yield from self.chat_sync(None,Conversion_ID) #递归
             else:
                 #print("debug_status:",chunks)
                 pass
@@ -176,14 +175,14 @@ class LLM_Model():
                 try:   
                 ###############Use tools#############
                     #print("test",tool_calls["name"])
-                    selected_tool = self.tools_dict[tool_calls["name"].lower()]
+                    selected_tool = self.tools_dict[tool_calls["name"]]
                     tool_output = selected_tool.invoke(tool_calls)
                     result.append(tool_output) 
                 #####################################
                 except Exception as e:
-                    result.append(ToolMessage(e))
+                    result.append(ToolMessage(content=e,tool_call_id=tool_calls["tool_call_id"]))
         return result
-class LLM_QWQ(LLM_Model):
+class LLM_QWQ(LLM_Base):
     def __init__(self, model_name:str="",api_key:str="",base_url="",temperature: float=0.6,tools: list=None,tools_dict: dict=None,maxtoken=2048):
         if model_name=="" or api_key=="":
             error=""
@@ -203,21 +202,18 @@ class LLM_QWQ(LLM_Model):
             max_tokens=maxtoken,
             streaming=True,
         )
+        self._memory_cache: dict[str,SQLChatMessageHistory] = {}#add manually,no super method
         self.LLM=self.bindtools(tools, tools_dict)
     def qwq_chat(self,qurey:str=None,Conversion_ID:str=None):
         """
         返回经过处理过的chunk
         """
-        # isReasoning=False
-        # StartThink=False
-        # EndThink=False
-        # isContent=False
         #define
         Reasoning=False
         Content=True
         #
-        LastChunk={"content":None,"type":None}
-        CurrentChunk={"content":None,"type":None}
+        LastChunk={"content":"","type":None}
+        CurrentChunk={"content":"","type":None}
         for chunk in super().chat_sync(qurey=qurey,Conversion_ID=Conversion_ID):
             ReasoningContent=chunk.additional_kwargs.get("reasoning_content","")
             StanderContent=chunk.content
@@ -231,38 +227,11 @@ class LLM_QWQ(LLM_Model):
                         if "<think>" not in CurrentChunk["content"]:
                             CurrentChunk["content"]="<think>\n"+CurrentChunk["content"]
                     elif CurrentChunk["type"]==Content:
-                        if "</think>" not in LastChunk["content"]:
+                        if "</think>" not in LastChunk["content"] and LastChunk["type"]==Reasoning:
                             CurrentChunk["content"]="\n</think>\n"+CurrentChunk["content"]
                 LastChunk=CurrentChunk.copy()
-                yield CurrentChunk["content"]
-                
-
-            # isContent=chunk.content!=""
-            # isReasoning=chunk.additional_kwargs.get("reasoning_content","")!=""
-            # if isReasoning:
-            #     reasoning_content=chunk.additional_kwargs["reasoning_content"]
-            #     if StartThink==False:
-            #         StartThink=True
-            #         #有时API不返回思维链标签
-            #         if "<think>" not in reasoning_content:
-            #             yield "<think>\n"+reasoning_content
-            #         else:
-            #             yield reasoning_content
-            #     else:
-            #         if "</think>" in reasoning_content:
-            #             EndThink=True
-            #             StartThink=False
-            #             reasoning_content=reasoning_content+"\n"
-            #         yield reasoning_content
-            # if isContent: 
-            #     if EndThink==False:
-            #         EndThink=True
-            #         StartThink=False
-            #         yield "\n</think>\n"+chunk.content
-            #     else:
-            #         yield chunk.content
-            
-        if CurrentChunk["type"]==LastChunk["type"]==Reasoning:
+                yield CurrentChunk["content"]                    
+        if CurrentChunk["type"]==LastChunk["type"]==Reasoning:#有时模型会调用多组工具,对话间持续思考
             pass
     def qwq_chat_print(self,qurey:str,Conversion_ID:str=None):
         """
@@ -271,54 +240,58 @@ class LLM_QWQ(LLM_Model):
         for response_str in self.qwq_chat(qurey=qurey,Conversion_ID=Conversion_ID):
             print(response_str,end="",flush=True)
             
-        
-#import asyncio
-##待开发
-# class LLM_Model_async(LLM_Model):
-#     def __init__(self, model_type: str="ollama",temperature: float=0.6,tools: list=None,tools_dict: dict=None,maxtoken=2048):
-#         super().__init__(model_type,temperature,tools,tools_dict,maxtoken)
-#     async def load_memory_async(self,conversion_id)-> SQLChatMessageHistory:
-#         async_engine = create_async_engine("sqlite+aiosqlite:///memory.db")
-#         async_message_history = SQLChatMessageHistory(
-#         session_id=conversion_id, connection=async_engine,
-#         )
-#     async def chat_async(self, qurey:str=None,Conversion_ID:str=None):
-#         self.LLM_async=RunnableWithMessageHistory(
-#             self.LLM,
-#             self.load_memory_async,
-#             )
-#         async_message_history=await self.load_memory_async(Conversion_ID)
-        # return async_message_history
-#         if qurey is not None:
-#             await chat_history.aadd_message(HumanMessage(content=qurey))
-#         chunks=None
-#         async for chunk in self.LLM_async.astream(chat_history,config={"configurable": {"session_id": Conversion_ID}}):
-#             #print("chunk:",chunk)
-#             if chunks is None:
-#                 chunks=chunk
-#             else:
-#                 chunks=chunks+chunk
-#             # 正常传输内容时，直接输出LLM的content###############
-#             if chunk.content!="":
-#                 print(chunk.content,end="",flush=True)
-#                 pass
-#             ###################################################
-#         #print("chunks",chunks)
-#         if chunks.response_metadata.get("finish_reason","")!="":
-#             print("Chunks:",chunks)
-#             Have_toolcalls=len(chunks.tool_calls)>0
-#             if chunks.response_metadata["finish_reason"]=="stop" and Have_toolcalls==False:
-#                 #save memory
-                
-#                 pass
-#             # 有的模型调用function call时，stop reason不一定为"tool_calls"
-#             elif chunks.response_metadata["finish_reason"]=="tool_calls" or Have_toolcalls==True: 
-                
-#                 function_call_result=self.function_call(chunks)
-#                 for function_msg in function_call_result:
-#                     chat_history.add_message(function_msg)
-#                 task=asyncio.create_task(self.chat_async(None,Conversion_ID))
-#                 await task 
-#             else:
-#                 #print("debug_status:",chunks)
-#                 pass
+class LLM_Qwen3(LLM_Base):
+    def __init__(self, model_name:str="",api_key:str="",base_url="",temperature: float=0.6,tools: list=None,tools_dict: dict=None,maxtoken=2048):
+        if model_name=="" or api_key=="":
+            error=""
+            if model_name=="":
+                error+="model_name "
+            if api_key=="":
+                error+="api_key "
+            raise ValueError(f"{error}不能为空")
+        self.__api_key = api_key
+        self.model_name = model_name
+        self.base_url = base_url
+        self.LLM=ChatQwQ(
+            model=self.model_name,
+            api_key=self.__api_key,
+            api_base=self.base_url,
+            temperature=temperature,
+            max_tokens=maxtoken,
+            streaming=True,
+            extra_body={
+                "enable_thinking": True
+            }
+        )
+        self._memory_cache: dict[str,SQLChatMessageHistory] = {}#add manually,no super method
+        self.LLM=self.bindtools(tools, tools_dict)    
+    def qwen3_chat(self,query:str=None,Conversion_ID:str=None,ThinkingMode:bool=True):
+        """
+        返回经过处理过的chunk
+        """
+        self.LLM.extra_body["enable_thinking"]=ThinkingMode
+        #define
+        Reasoning=False
+        Content=True
+        #
+        LastChunk={"content":"","type":None}
+        CurrentChunk={"content":"","type":None}
+        for chunk in super().chat_sync(qurey=query,Conversion_ID=Conversion_ID):
+            ReasoningContent=chunk.additional_kwargs.get("reasoning_content","")
+            StanderContent=chunk.content
+            if ReasoningContent=="" and StanderContent=="":
+                pass
+            else:
+                CurrentChunk["content"]=chunk.content if StanderContent!="" else ReasoningContent
+                CurrentChunk["type"]=Content if StanderContent!="" else Reasoning
+                if CurrentChunk["type"]!=LastChunk["type"]:
+                    if CurrentChunk["type"]==Reasoning:
+                        if "<think>" not in CurrentChunk["content"]:
+                            CurrentChunk["content"]="<think>\n"+CurrentChunk["content"]
+                    elif CurrentChunk["type"]==Content:
+                        if "</think>" not in LastChunk["content"] and LastChunk["type"]==Reasoning:
+                            CurrentChunk["content"]="\n</think>\n"+CurrentChunk["content"]
+                LastChunk=CurrentChunk.copy()
+                yield CurrentChunk["content"]            
+        if CurrentChunk["type"]==LastChunk["type"]==Reasoning:
+            pass

@@ -1,4 +1,4 @@
-from model import LLM_Base,LLM_QWQ,LLM_Qwen3
+from model import LLM_Base
 from langchain_tools import tools, tools_dict
 import os
 from dotenv import load_dotenv
@@ -7,17 +7,11 @@ from prompt_toolkit.completion import WordCompleter
 if __name__ == "__main__":
    load_dotenv()
    commands = WordCompleter(["exit","clear","enable_thinking","disable_thinking"],ignore_case=True)
-#    LLM=LLM_Base(model_name=os.getenv("OPENAI_MODEL_NAME"),api_key=os.getenv("OPENAI_API_KEY"),
-#                base_url=os.getenv("OPENAI_BASE_URL"),temperature=0.6,maxtoken=8192,
-#                tools=tools,tools_dict=tools_dict)
 
-   LLM=LLM_Qwen3(model_name=os.getenv("OPENAI_MODEL_NAME"),api_key=os.getenv("OPENAI_API_KEY"),
-               base_url=os.getenv("OPENAI_BASE_URL"),temperature=0.6,maxtoken=8192,
+   LLM=LLM_Base(model_name='gpt-5',api_key=os.getenv("OPENAI_API_KEY"),
+               base_url=os.getenv("OPENAI_BASE_URL"),temperature=0.6,
                tools=tools,tools_dict=tools_dict)
 
-#    LLM=LLM_Qwen3(model_name=os.getenv("LMSTUDIO_MODEL_NAME"),api_key=os.getenv("LMSTUDIO_API_KEY"),
-#                 base_url=os.getenv("LMSTUDIO_BASE_URL"),temperature=0.6,maxtoken=8192,
-#                 tools=tools,tools_dict=tools_dict)
    conversion_id=input("请输入会话ID:")
    EnableThinking:bool=True
    while True:
@@ -39,7 +33,6 @@ if __name__ == "__main__":
         print("关闭推理模式")
     else:
         print("\nAI:")
-        for msg in LLM.qwen3_chat(query=qurey,Conversion_ID=conversion_id,ThinkingMode=EnableThinking):
-        #for msg in LLM.openai_chat(qurey=qurey,Conversion_ID=conversion_id):
+        for msg in LLM.openai_chat(qurey=qurey,Conversion_ID=conversion_id):
             print(msg,end="",flush=True)
         print("\n")

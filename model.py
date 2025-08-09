@@ -1,9 +1,9 @@
-import os
-import secrets
+#import os
+#import secrets
 from langchain_openai import ChatOpenAI
 from langchain_qwq import ChatQwQ
-from langchain_core.messages import ToolMessage,HumanMessage,AIMessage,SystemMessage,AIMessageChunk
-from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain_core.messages import ToolMessage,SystemMessage#,AIMessageChunk,HumanMessage,AIMessage
+#from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_community.chat_message_histories import SQLChatMessageHistory
 class LLM_Base():
     def __init__(self,model_name:str="",api_key:str="",base_url:str="",temperature: float=0.6,tools: list=None,tools_dict: dict=None,maxtoken:int=8192):
@@ -138,12 +138,11 @@ class LLM_Base():
             chat_history.add_ai_message(chunks)
             self._memory_cache[Conversion_ID]=chat_history
             Have_toolcalls=len(chunks.tool_calls)>0 or len(chunks.tool_call_chunks)>0
-            if chunks.response_metadata["finish_reason"]=="stop" and Have_toolcalls==False:
-                
+            if chunks.response_metadata["finish_reason"]=="stop" and not Have_toolcalls:
                 yield chunk
                 
             # 有的模型调用function call时，stop reason不一定为"tool_calls"
-            elif chunks.response_metadata["finish_reason"]=="tool_calls" or Have_toolcalls==True: 
+            elif chunks.response_metadata["finish_reason"]=="tool_calls" or Have_toolcalls: 
                 function_call_result=self.function_call(chunks)
                 for function_msg in function_call_result:
                     chat_history.add_message(function_msg)

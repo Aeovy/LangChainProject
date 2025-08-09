@@ -10,7 +10,8 @@ import bilibili_api
 from bilibili_api import sync
 from bilibili_api.search import SearchObjectType
 import Functions.Functions as Functions
-from Functions.AgentCoding import CodeAgent
+from Functions.AgentCoding import AgentCoding
+CodeAgent=AgentCoding()
 
 @tool
 def CreateFile(content:str,filename:str)->Union[dict[str,str], Exception]:

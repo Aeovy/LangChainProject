@@ -5,7 +5,7 @@ import inspect
 import ast
 from RAG.RAG import MyVectordb
 import os
-from typing import Any, Union
+from typing import Union
 import bilibili_api
 from bilibili_api import sync
 from bilibili_api.search import SearchObjectType
@@ -25,16 +25,17 @@ def CreateFile(content:str,filename:str)->Union[dict[str,str], Exception]:
     result=CodeAgent.CreateFile(code=content,filename=filename)
     return result
 @tool
-def RunPythonFile(PythonFilePath:str)->Union[str, Exception]:
+def RunPythonFile(PythonFilePath:str, timeout:int=10)->Union[str, Exception]:
     """
     功能:运行指定的Python文件(不含阻塞式代码)。
     可以获得代码中标准输出流的输出结果。
     参数:
-        PythonFilePath: 要运行的Python文件的绝对路径
+        PythonFilePath: 要运行的Python文件的绝对路径或文件名
+        timeout: 运行超时时间（秒）,在运行复杂计算、代码时要适当调高
     返回:
         str: 运行结果或错误信息
     """
-    result=CodeAgent.RunPython(PythonFilePath=PythonFilePath)
+    result=CodeAgent.RunPython(PythonFilePath=PythonFilePath, timeout=timeout)
     return result
 @tool
 def PopenPythonFile(PythonFilePath:str)->Union[str, Exception]:
@@ -53,6 +54,7 @@ def PopenPythonFile(PythonFilePath:str)->Union[str, Exception]:
 def PipInstall(package:str)->Union[str, Exception]:
     """
     功能:安装指定的Python包。
+    请在运行Python文件后发现缺失包时使用。
     参数:
         package: 要安装的Python包的名称
     返回:

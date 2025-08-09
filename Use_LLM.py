@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from prompt_toolkit import prompt
 from prompt_toolkit.completion import WordCompleter
 if __name__ == "__main__":
+   load_dotenv()
    commands = WordCompleter(["exit","clear","enable_thinking","disable_thinking"],ignore_case=True)
 #    LLM=LLM_Base(model_name=os.getenv("OPENAI_MODEL_NAME"),api_key=os.getenv("OPENAI_API_KEY"),
 #                base_url=os.getenv("OPENAI_BASE_URL"),temperature=0.6,maxtoken=8192,
